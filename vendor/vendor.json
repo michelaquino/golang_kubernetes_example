@@ -1,0 +1,15 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "+GHJuqDk0UMq9o13TgGJoeCGRCc=",
+			"path": "github.com/kubernetes/client-go",
+			"revision": "df46f7f13b3da19b90b8b4f0d18b8adc6fbf28dc",
+			"revisionTime": "2017-07-07T20:27:35Z",
+			"version": "=v4.0.0-beta.0",
+			"versionExact": "v4.0.0-beta.0"
+		}
+	],
+	"rootPath": "github.com/michelaquino/golang_kubernetes_example"
+}
