@@ -34,6 +34,7 @@ func main() {
 		createDeployment(deploymentsClient)
 	case "update":
 	case "list":
+		listDeployments(deploymentsClient)
 	case "delete":
 		deleteDeployment(deploymentsClient)
 	default:
@@ -109,6 +110,17 @@ func deleteDeployment(deploymentsClient typedAppsV1beta1.DeploymentInterface) {
 	}
 
 	fmt.Println("Deleted deployment.")
+}
+
+func listDeployments(deploymentsClient typedAppsV1beta1.DeploymentInterface) {
+	fmt.Printf("Listing deployments in namespace %q:\n", apiv1.NamespaceDefault)
+	list, err := deploymentsClient.List(metav1.ListOptions{})
+	if err != nil {
+		panic(err)
+	}
+	for _, d := range list.Items {
+		fmt.Printf(" * %s (%d replicas)\n", d.Name, *d.Spec.Replicas)
+	}
 }
 
 func int32Ptr(i int32) *int32 { return &i }
