@@ -7,6 +7,7 @@ import (
 
 	appsv1beta1 "k8s.io/api/apps/v1beta1"
 
+	apiBatchv1 "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,6 +22,7 @@ const (
 	deployName = "example-michel"
 	appName    = "web-nginx"
 	appPort    = 8080
+	jobName    = "job-hello-world"
 )
 
 func main() {
@@ -49,6 +51,8 @@ func main() {
 		deleteService(kubernetesClientSet)
 	case "list-service":
 		listServices(kubernetesClientSet)
+	case "create-job":
+		createJob(kubernetesClientSet)
 	default:
 		fmt.Println("Invalid operation. Must be: create | update | list | delete | create-service | delete-service")
 		os.Exit(1)
@@ -210,6 +214,40 @@ func listServices(clientSet *kubernetes.Clientset) {
 	for _, service := range serviceList.Items {
 		fmt.Printf("* %s (Cluster IP: %s)\n", service.Name, service.Spec.ClusterIP)
 	}
+}
+
+func createJob(clientSet *kubernetes.Clientset) {
+	job := &apiBatchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: jobName,
+		},
+		Spec: apiBatchv1.JobSpec{
+			Template: apiv1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "job-demo",
+					},
+				},
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{
+							Name:  "docker-hello-world",
+							Image: "library/hello-world",
+						},
+					},
+					RestartPolicy: "Never",
+				},
+			},
+		},
+	}
+
+	_, err := clientSet.Jobs(namespace).Create(job)
+	if err != nil {
+		fmt.Println("Error on create JOB. Error: ", err)
+		return
+	}
+
+	fmt.Println("Job created with success")
 }
 
 func int32Ptr(i int32) *int32 { return &i }
