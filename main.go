@@ -8,14 +8,19 @@ import (
 	appsv1beta1 "k8s.io/api/apps/v1beta1"
 
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	typedAppsV1beta1 "k8s.io/client-go/kubernetes/typed/apps/v1beta1"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
+	namespace  = apiv1.NamespaceDefault
 	deployName = "example-michel"
+	appName    = "web-nginx"
+	appPort    = 8080
 )
 
 func main() {
@@ -27,7 +32,8 @@ func main() {
 		panic("-kubeconfig not specified")
 	}
 
-	deploymentsClient := getKubernetesClient(*kubeconfig)
+	kubernetesClientSet := getKubernetesClient(*kubeconfig)
+	deploymentsClient := kubernetesClientSet.AppsV1beta1().Deployments(namespace)
 
 	switch *operation {
 	case "create":
@@ -37,13 +43,15 @@ func main() {
 		listDeployments(deploymentsClient)
 	case "delete":
 		deleteDeployment(deploymentsClient)
+	case "create-service":
+		createService(kubernetesClientSet)
 	default:
 		fmt.Println("Invalid operation. Must be: create | update | list | delete")
 		os.Exit(1)
 	}
 }
 
-func getKubernetesClient(kubeconfig string) typedAppsV1beta1.DeploymentInterface {
+func getKubernetesClient(kubeconfig string) *kubernetes.Clientset {
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		panic(err)
@@ -54,8 +62,10 @@ func getKubernetesClient(kubeconfig string) typedAppsV1beta1.DeploymentInterface
 		panic(err)
 	}
 
-	deploymentsClient := kubernetesClientSet.AppsV1beta1().Deployments(apiv1.NamespaceDefault)
-	return deploymentsClient
+	return kubernetesClientSet
+
+	// deploymentsClient := kubernetesClientSet.AppsV1beta1().Deployments(apiv1.NamespaceDefault)
+	// return deploymentsClient
 }
 
 func createDeployment(deploymentsClient typedAppsV1beta1.DeploymentInterface) {
@@ -74,13 +84,13 @@ func createDeployment(deploymentsClient typedAppsV1beta1.DeploymentInterface) {
 				Spec: apiv1.PodSpec{
 					Containers: []apiv1.Container{
 						{
-							Name:  "web",
+							Name:  appName,
 							Image: "nginx:1.13",
 							Ports: []apiv1.ContainerPort{
 								{
 									Name:          "http",
 									Protocol:      apiv1.ProtocolTCP,
-									ContainerPort: 80,
+									ContainerPort: appPort,
 								},
 							},
 						},
@@ -99,6 +109,59 @@ func createDeployment(deploymentsClient typedAppsV1beta1.DeploymentInterface) {
 	fmt.Printf("Created deployment %q.\n", result.GetObjectMeta().GetName())
 }
 
+func createService(clientSet *kubernetes.Clientset) {
+	serviceSpec := &apiv1.Service{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Service",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: appName,
+		},
+		Spec: apiv1.ServiceSpec{
+			Type:     apiv1.ServiceTypeClusterIP,
+			Selector: map[string]string{"app": appName},
+			Ports: []apiv1.ServicePort{
+				apiv1.ServicePort{
+					Protocol: apiv1.ProtocolTCP,
+					Port:     8080,
+					TargetPort: intstr.IntOrString{
+						Type:   intstr.Int,
+						IntVal: int32(appPort),
+					},
+				},
+			},
+		},
+	}
+
+	// Implement service update-or-create semantics.
+	service := clientSet.Core().Services(namespace)
+	svc, err := service.Get(appName, metav1.GetOptions{})
+	switch {
+	case err == nil:
+		serviceSpec.ObjectMeta.ResourceVersion = svc.ObjectMeta.ResourceVersion
+		serviceSpec.Spec.ClusterIP = svc.Spec.ClusterIP
+
+		_, err = service.Update(serviceSpec)
+		if err != nil {
+			fmt.Printf("failed to update service: %s", err)
+			return
+		}
+
+		fmt.Println("service updated")
+	case errors.IsNotFound(err):
+		_, err = service.Create(serviceSpec)
+		if err != nil {
+			fmt.Printf("failed to create service: %s", err)
+			return
+		}
+
+		fmt.Println("service created")
+	default:
+		fmt.Printf("unexpected error: %s", err)
+	}
+}
+
 func deleteDeployment(deploymentsClient typedAppsV1beta1.DeploymentInterface) {
 	fmt.Println("Deleting deployment...")
 
@@ -113,7 +176,7 @@ func deleteDeployment(deploymentsClient typedAppsV1beta1.DeploymentInterface) {
 }
 
 func listDeployments(deploymentsClient typedAppsV1beta1.DeploymentInterface) {
-	fmt.Printf("Listing deployments in namespace %q:\n", apiv1.NamespaceDefault)
+	fmt.Printf("Listing deployments in namespace %q:\n", namespace)
 	list, err := deploymentsClient.List(metav1.ListOptions{})
 	if err != nil {
 		panic(err)
