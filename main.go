@@ -109,6 +109,30 @@ func createDeployment(deploymentsClient typedAppsV1beta1.DeploymentInterface) {
 	fmt.Printf("Created deployment %q.\n", result.GetObjectMeta().GetName())
 }
 
+func deleteDeployment(deploymentsClient typedAppsV1beta1.DeploymentInterface) {
+	fmt.Println("Deleting deployment...")
+
+	deletePolicy := metav1.DeletePropagationForeground
+	if err := deploymentsClient.Delete(deployName, &metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}); err != nil {
+		fmt.Println("Error on delete deployment. Error: ", err.Error())
+	}
+
+	fmt.Println("Deleted deployment.")
+}
+
+func listDeployments(deploymentsClient typedAppsV1beta1.DeploymentInterface) {
+	fmt.Printf("Listing deployments in namespace %q:\n", namespace)
+	list, err := deploymentsClient.List(metav1.ListOptions{})
+	if err != nil {
+		panic(err)
+	}
+	for _, d := range list.Items {
+		fmt.Printf(" * %s (%d replicas)\n", d.Name, *d.Spec.Replicas)
+	}
+}
+
 func createService(clientSet *kubernetes.Clientset) {
 	serviceSpec := &apiv1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -159,30 +183,6 @@ func createService(clientSet *kubernetes.Clientset) {
 		fmt.Println("service created")
 	default:
 		fmt.Printf("unexpected error: %s", err)
-	}
-}
-
-func deleteDeployment(deploymentsClient typedAppsV1beta1.DeploymentInterface) {
-	fmt.Println("Deleting deployment...")
-
-	deletePolicy := metav1.DeletePropagationForeground
-	if err := deploymentsClient.Delete(deployName, &metav1.DeleteOptions{
-		PropagationPolicy: &deletePolicy,
-	}); err != nil {
-		fmt.Println("Error on delete deployment. Error: ", err.Error())
-	}
-
-	fmt.Println("Deleted deployment.")
-}
-
-func listDeployments(deploymentsClient typedAppsV1beta1.DeploymentInterface) {
-	fmt.Printf("Listing deployments in namespace %q:\n", namespace)
-	list, err := deploymentsClient.List(metav1.ListOptions{})
-	if err != nil {
-		panic(err)
-	}
-	for _, d := range list.Items {
-		fmt.Printf(" * %s (%d replicas)\n", d.Name, *d.Spec.Replicas)
 	}
 }
 
