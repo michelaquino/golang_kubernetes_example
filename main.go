@@ -45,8 +45,12 @@ func main() {
 		deleteDeployment(deploymentsClient)
 	case "create-service":
 		createService(kubernetesClientSet)
+	case "delete-service":
+		deleteService(kubernetesClientSet)
+	case "list-service":
+		listServices(kubernetesClientSet)
 	default:
-		fmt.Println("Invalid operation. Must be: create | update | list | delete")
+		fmt.Println("Invalid operation. Must be: create | update | list | delete | create-service | delete-service")
 		os.Exit(1)
 	}
 }
@@ -63,9 +67,6 @@ func getKubernetesClient(kubeconfig string) *kubernetes.Clientset {
 	}
 
 	return kubernetesClientSet
-
-	// deploymentsClient := kubernetesClientSet.AppsV1beta1().Deployments(apiv1.NamespaceDefault)
-	// return deploymentsClient
 }
 
 func createDeployment(deploymentsClient typedAppsV1beta1.DeploymentInterface) {
@@ -183,6 +184,31 @@ func createService(clientSet *kubernetes.Clientset) {
 		fmt.Println("service created")
 	default:
 		fmt.Printf("unexpected error: %s", err)
+	}
+}
+
+func deleteService(clientSet *kubernetes.Clientset) {
+	service := clientSet.Core().Services(namespace)
+
+	if err := service.Delete(appName, &metav1.DeleteOptions{}); err != nil {
+		fmt.Println("Error on delete service")
+		return
+	}
+
+	fmt.Println("Service deleted")
+}
+
+func listServices(clientSet *kubernetes.Clientset) {
+	service := clientSet.Core().Services(namespace)
+
+	serviceList, err := service.List(metav1.ListOptions{})
+	if err != nil {
+		fmt.Println("Error on list services")
+		return
+	}
+
+	for _, service := range serviceList.Items {
+		fmt.Printf("* %s (Cluster IP: %s)\n", service.Name, service.Spec.ClusterIP)
 	}
 }
 
