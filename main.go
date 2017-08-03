@@ -4,6 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
+
+	"github.com/oklog/ulid"
 
 	appsv1beta1 "k8s.io/api/apps/v1beta1"
 
@@ -15,14 +18,16 @@ import (
 	"k8s.io/client-go/kubernetes"
 	typedAppsV1beta1 "k8s.io/client-go/kubernetes/typed/apps/v1beta1"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"crypto/rand"
 )
 
 const (
-	namespace  = apiv1.NamespaceDefault
-	deployName = "example-michel"
-	appName    = "web-nginx"
-	appPort    = 8080
-	jobName    = "job-hello-world"
+	namespace   = apiv1.NamespaceDefault
+	deployName  = "example-michel"
+	appName     = "web-nginx"
+	appPort     = 8080
+	jobBaseName = "job-hello-world"
 )
 
 func main() {
@@ -53,6 +58,8 @@ func main() {
 		listServices(kubernetesClientSet)
 	case "create-job":
 		createJob(kubernetesClientSet)
+	case "get-jobs":
+		getJobs(kubernetesClientSet)
 	default:
 		fmt.Println("Invalid operation. Must be: create | update | list | delete | create-service | delete-service")
 		os.Exit(1)
@@ -217,6 +224,9 @@ func listServices(clientSet *kubernetes.Clientset) {
 }
 
 func createJob(clientSet *kubernetes.Clientset) {
+	ulid := ulid.MustNew(ulid.Now(), rand.Reader)
+	jobName := strings.ToLower(fmt.Sprintf("%s-%s", ulid, jobBaseName))
+
 	job := &apiBatchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: jobName,
@@ -243,11 +253,34 @@ func createJob(clientSet *kubernetes.Clientset) {
 
 	_, err := clientSet.Jobs(namespace).Create(job)
 	if err != nil {
-		fmt.Println("Error on create JOB. Error: ", err)
+		fmt.Printf("Error on create %s Job. Error: %s", jobName, err.Error())
 		return
 	}
 
-	fmt.Println("Job created with success")
+	fmt.Printf("Job %s created with success\n", jobName)
+
+	// watch, err := clientSet.Jobs(namespace).Watch(metav1.ListOptions{})
+	// if err != nil {
+	// 	fmt.Println("Error on watch Jobs")
+	// 	return
+	// }
+
+	// select {
+	// case result := <-watch.ResultChan():
+	// 	fmt.Println("Result: ", result)
+	// }
+}
+
+func getJobs(clientSet *kubernetes.Clientset) {
+	jobList, err := clientSet.Jobs(namespace).List(metav1.ListOptions{})
+	if err != nil {
+		fmt.Println("Error on get Jobs")
+		return
+	}
+
+	for _, job := range jobList.Items {
+		fmt.Println("Job: ", job.Name)
+	}
 }
 
 func int32Ptr(i int32) *int32 { return &i }
