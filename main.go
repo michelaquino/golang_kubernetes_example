@@ -60,6 +60,8 @@ func main() {
 		createJob(kubernetesClientSet)
 	case "get-jobs":
 		getJobs(kubernetesClientSet)
+	case "get-pods":
+		getPods(kubernetesClientSet)
 	default:
 		fmt.Println("Invalid operation. Must be: create | update | list | delete | create-service | delete-service")
 		os.Exit(1)
@@ -281,6 +283,37 @@ func getJobs(clientSet *kubernetes.Clientset) {
 	for _, job := range jobList.Items {
 		fmt.Println("Job: ", job.Name)
 	}
+}
+
+func getPods(clientSet *kubernetes.Clientset) {
+	podInterface := clientSet.Pods(namespace)
+
+	podList, err := podInterface.List(metav1.ListOptions{})
+	if err != nil {
+		fmt.Println("Error on get pods")
+		return
+	}
+
+	for _, pod := range podList.Items {
+		fmt.Println("pod.UID: ", pod.UID)
+		fmt.Println("pod.Name: ", pod.Name)
+		fmt.Println("pod.Labels: ", pod.Labels)
+
+		getPodLog(clientSet, namespace, pod.Name)
+	}
+}
+
+func getPodLog(clientSet *kubernetes.Clientset, podNamespace, podName string) {
+	podInterface := clientSet.Pods(podNamespace)
+	logRequest := podInterface.GetLogs(podName, &apiv1.PodLogOptions{})
+
+	logByteArray, err := logRequest.DoRaw()
+	if err != nil {
+		fmt.Println("Error on get logs: ", err.Error())
+		return
+	}
+
+	fmt.Println("byteArray: ", string(logByteArray))
 }
 
 func int32Ptr(i int32) *int32 { return &i }
