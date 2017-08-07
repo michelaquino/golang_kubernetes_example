@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -253,24 +254,52 @@ func createJob(clientSet *kubernetes.Clientset) {
 		},
 	}
 
-	_, err := clientSet.Jobs(namespace).Create(job)
+	jobInterface := clientSet.Jobs(namespace)
+
+	jobCreated, err := jobInterface.Create(job)
 	if err != nil {
 		fmt.Printf("Error on create %s Job. Error: %s", jobName, err.Error())
 		return
 	}
 
-	fmt.Printf("Job %s created with success\n", jobName)
+	fmt.Printf("Job %s created with success\n", jobCreated.Name)
 
-	// watch, err := clientSet.Jobs(namespace).Watch(metav1.ListOptions{})
-	// if err != nil {
-	// 	fmt.Println("Error on watch Jobs")
-	// 	return
-	// }
+	watch, err := jobInterface.Watch(metav1.ListOptions{
+		LabelSelector: "job-name=" + jobCreated.Name,
+	})
+	if err != nil {
+		fmt.Println("Error on watch Jobs")
+		return
+	}
 
-	// select {
-	// case result := <-watch.ResultChan():
-	// 	fmt.Println("Result: ", result)
-	// }
+	for result := range watch.ResultChan() {
+		fmt.Println("result.Type: ", result.Type)
+		// fmt.Println("result.Object: ", result.Object)
+
+		jobWatched, parsed := result.Object.(*apiBatchv1.Job)
+		if !parsed {
+			fmt.Println("Error on parse object")
+			continue
+		}
+
+		statusJSON, _ := json.Marshal(jobWatched.Status)
+		fmt.Println("statusJSON: ", string(statusJSON))
+
+		if jobWatched.Status.CompletionTime == nil {
+			fmt.Println("Job not finished yet!")
+			continue
+		}
+
+		if jobWatched.Status.Succeeded == 1 {
+			fmt.Println("Job succeeded!")
+		} else {
+			fmt.Println("Job failed!")
+		}
+
+		watch.Stop()
+	}
+
+	getJobPodLog(clientSet, jobCreated.Name)
 }
 
 func getJobs(clientSet *kubernetes.Clientset) {
@@ -289,6 +318,27 @@ func getPods(clientSet *kubernetes.Clientset) {
 	podInterface := clientSet.Pods(namespace)
 
 	podList, err := podInterface.List(metav1.ListOptions{})
+	if err != nil {
+		fmt.Println("Error on get pods")
+		return
+	}
+
+	for _, pod := range podList.Items {
+		fmt.Println("pod.UID: ", pod.UID)
+		fmt.Println("pod.Name: ", pod.Name)
+		fmt.Println("pod.Labels: ", pod.Labels)
+
+		getPodLog(clientSet, namespace, pod.Name)
+	}
+}
+
+func getJobPodLog(clientSet *kubernetes.Clientset, jobName string) {
+	podInterface := clientSet.Pods(namespace)
+
+	podList, err := podInterface.List(metav1.ListOptions{
+		LabelSelector: "job-name=" + jobName,
+	})
+
 	if err != nil {
 		fmt.Println("Error on get pods")
 		return
