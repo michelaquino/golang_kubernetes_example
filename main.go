@@ -1,17 +1,14 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
-	"github.com/oklog/ulid"
+	"github.com/michelaquino/golang_kubernetes_example/orchestrator"
 
 	appsv1beta1 "k8s.io/api/apps/v1beta1"
 
-	apiBatchv1 "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,8 +16,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	typedAppsV1beta1 "k8s.io/client-go/kubernetes/typed/apps/v1beta1"
 	"k8s.io/client-go/tools/clientcmd"
-
-	"crypto/rand"
 )
 
 const (
@@ -43,6 +38,8 @@ func main() {
 	kubernetesClientSet := getKubernetesClient(*kubeconfig)
 	deploymentsClient := kubernetesClientSet.AppsV1beta1().Deployments(namespace)
 
+	jobOrchestrator := orchestrator.NewJobOrchestrator(kubernetesClientSet)
+
 	switch *operation {
 	case "create":
 		createDeployment(deploymentsClient)
@@ -58,9 +55,9 @@ func main() {
 	case "list-service":
 		listServices(kubernetesClientSet)
 	case "create-job":
-		createJob(kubernetesClientSet)
+		jobOrchestrator.Create()
 	case "get-jobs":
-		getJobs(kubernetesClientSet)
+		jobOrchestrator.List()
 	case "get-pods":
 		getPods(kubernetesClientSet)
 	default:
@@ -226,94 +223,6 @@ func listServices(clientSet *kubernetes.Clientset) {
 	}
 }
 
-func createJob(clientSet *kubernetes.Clientset) {
-	ulid := ulid.MustNew(ulid.Now(), rand.Reader)
-	jobName := strings.ToLower(fmt.Sprintf("%s-%s", ulid, jobBaseName))
-
-	job := &apiBatchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: jobName,
-		},
-		Spec: apiBatchv1.JobSpec{
-			Template: apiv1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app": "job-demo",
-					},
-				},
-				Spec: apiv1.PodSpec{
-					Containers: []apiv1.Container{
-						{
-							Name:  "docker-hello-world",
-							Image: "library/hello-world",
-						},
-					},
-					RestartPolicy: "Never",
-				},
-			},
-		},
-	}
-
-	jobInterface := clientSet.Jobs(namespace)
-
-	jobCreated, err := jobInterface.Create(job)
-	if err != nil {
-		fmt.Printf("Error on create %s Job. Error: %s", jobName, err.Error())
-		return
-	}
-
-	fmt.Printf("Job %s created with success\n", jobCreated.Name)
-
-	watch, err := jobInterface.Watch(metav1.ListOptions{
-		LabelSelector: "job-name=" + jobCreated.Name,
-	})
-	if err != nil {
-		fmt.Println("Error on watch Jobs")
-		return
-	}
-
-	for result := range watch.ResultChan() {
-		fmt.Println("result.Type: ", result.Type)
-		// fmt.Println("result.Object: ", result.Object)
-
-		jobWatched, parsed := result.Object.(*apiBatchv1.Job)
-		if !parsed {
-			fmt.Println("Error on parse object")
-			continue
-		}
-
-		statusJSON, _ := json.Marshal(jobWatched.Status)
-		fmt.Println("statusJSON: ", string(statusJSON))
-
-		if jobWatched.Status.CompletionTime == nil {
-			fmt.Println("Job not finished yet!")
-			continue
-		}
-
-		if jobWatched.Status.Succeeded == 1 {
-			fmt.Println("Job succeeded!")
-		} else {
-			fmt.Println("Job failed!")
-		}
-
-		watch.Stop()
-	}
-
-	getJobPodLog(clientSet, jobCreated.Name)
-}
-
-func getJobs(clientSet *kubernetes.Clientset) {
-	jobList, err := clientSet.Jobs(namespace).List(metav1.ListOptions{})
-	if err != nil {
-		fmt.Println("Error on get Jobs")
-		return
-	}
-
-	for _, job := range jobList.Items {
-		fmt.Println("Job: ", job.Name)
-	}
-}
-
 func getPods(clientSet *kubernetes.Clientset) {
 	podInterface := clientSet.Pods(namespace)
 
@@ -327,43 +236,7 @@ func getPods(clientSet *kubernetes.Clientset) {
 		fmt.Println("pod.UID: ", pod.UID)
 		fmt.Println("pod.Name: ", pod.Name)
 		fmt.Println("pod.Labels: ", pod.Labels)
-
-		getPodLog(clientSet, namespace, pod.Name)
 	}
-}
-
-func getJobPodLog(clientSet *kubernetes.Clientset, jobName string) {
-	podInterface := clientSet.Pods(namespace)
-
-	podList, err := podInterface.List(metav1.ListOptions{
-		LabelSelector: "job-name=" + jobName,
-	})
-
-	if err != nil {
-		fmt.Println("Error on get pods")
-		return
-	}
-
-	for _, pod := range podList.Items {
-		fmt.Println("pod.UID: ", pod.UID)
-		fmt.Println("pod.Name: ", pod.Name)
-		fmt.Println("pod.Labels: ", pod.Labels)
-
-		getPodLog(clientSet, namespace, pod.Name)
-	}
-}
-
-func getPodLog(clientSet *kubernetes.Clientset, podNamespace, podName string) {
-	podInterface := clientSet.Pods(podNamespace)
-	logRequest := podInterface.GetLogs(podName, &apiv1.PodLogOptions{})
-
-	logByteArray, err := logRequest.DoRaw()
-	if err != nil {
-		fmt.Println("Error on get logs: ", err.Error())
-		return
-	}
-
-	fmt.Println("byteArray: ", string(logByteArray))
 }
 
 func int32Ptr(i int32) *int32 { return &i }
