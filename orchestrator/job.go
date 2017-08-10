@@ -14,9 +14,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-const namespace = apiv1.NamespaceDefault
-const jobBaseName = "job-hello-world"
-
 type JobOrchestrator struct {
 	KubernetesClientSet *kubernetes.Clientset
 }
@@ -29,7 +26,7 @@ func NewJobOrchestrator(kubernetesClientSet *kubernetes.Clientset) *JobOrchestra
 
 func (j JobOrchestrator) Create() error {
 	ulid := ulid.MustNew(ulid.Now(), rand.Reader)
-	jobName := strings.ToLower(fmt.Sprintf("%s-%s", ulid, jobBaseName))
+	jobName := strings.ToLower(fmt.Sprintf("%s-%s", ulid, "job-example"))
 
 	job := &apiBatchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -55,7 +52,7 @@ func (j JobOrchestrator) Create() error {
 		},
 	}
 
-	jobInterface := j.KubernetesClientSet.Jobs(namespace)
+	jobInterface := j.KubernetesClientSet.Jobs(apiv1.NamespaceDefault)
 	jobCreated, err := jobInterface.Create(job)
 	if err != nil {
 		fmt.Printf("Error on create %s Job. Error: %s", jobName, err.Error())
@@ -74,7 +71,7 @@ func (j JobOrchestrator) Create() error {
 }
 
 func (j JobOrchestrator) List() {
-	jobList, err := j.KubernetesClientSet.Jobs(namespace).List(metav1.ListOptions{})
+	jobList, err := j.KubernetesClientSet.Jobs(apiv1.NamespaceDefault).List(metav1.ListOptions{})
 	if err != nil {
 		fmt.Println("Error on get Jobs")
 		return
@@ -86,7 +83,7 @@ func (j JobOrchestrator) List() {
 }
 
 func (j JobOrchestrator) getJobOutput(jobName string) (string, error) {
-	jobInterface := j.KubernetesClientSet.Jobs(namespace)
+	jobInterface := j.KubernetesClientSet.Jobs(apiv1.NamespaceDefault)
 	watch, err := jobInterface.Watch(metav1.ListOptions{
 		LabelSelector: "job-name=" + jobName,
 	})
@@ -98,7 +95,6 @@ func (j JobOrchestrator) getJobOutput(jobName string) (string, error) {
 
 	for result := range watch.ResultChan() {
 		fmt.Println("result.Type: ", result.Type)
-		// fmt.Println("result.Object: ", result.Object)
 
 		jobWatched, parsed := result.Object.(*apiBatchv1.Job)
 		if !parsed {
@@ -128,7 +124,7 @@ func (j JobOrchestrator) getJobOutput(jobName string) (string, error) {
 }
 
 func (j JobOrchestrator) getPodOutput(jobName string) (string, error) {
-	podInterface := j.KubernetesClientSet.Pods(namespace)
+	podInterface := j.KubernetesClientSet.Pods(apiv1.NamespaceDefault)
 	podList, err := podInterface.List(metav1.ListOptions{
 		LabelSelector: "job-name=" + jobName,
 	})
