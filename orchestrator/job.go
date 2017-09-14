@@ -42,8 +42,9 @@ func (j JobOrchestrator) Create() error {
 				Spec: apiv1.PodSpec{
 					Containers: []apiv1.Container{
 						{
-							Name:  "docker-hello-world",
-							Image: "library/hello-world",
+							Name:    "docker-hello-world-ubuntu",
+							Image:   "ubuntu:latest",
+							Command: []string{"echo", "Hello World!"},
 						},
 					},
 					RestartPolicy: "Never",
